@@ -1,9 +1,12 @@
 <?php
 namespace DIU\Neos\HealthCheck\Controller;
 
-use Neos\Eel\FlowQuery\FlowQuery;
+use Neos\ContentRepository\Core\SharedModel\Workspace\WorkspaceName;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Mvc\Controller\ActionController;
+use Neos\Flow\Mvc\View\JsonView;
+use Neos\Neos\Domain\Repository\SiteRepository;
+use Neos\Neos\Domain\Service\SiteNodeUtility;
 
 /**
  * Controller for healthcheck
@@ -13,24 +16,31 @@ use Neos\Flow\Mvc\Controller\ActionController;
 class HealthCheckController extends ActionController
 {
 
-    /**
-     * @Flow\Inject
-     * @var Neos\ContentRepository\Domain\Service\ContextFactoryInterface
-     */
-    protected $contextFactory;
+    #[Flow\Inject]
+    protected SiteRepository $siteRepository;
+
+    #[Flow\Inject]
+    protected SiteNodeUtility $siteNodeUtility;
 
     /**
      * @var string
      */
-    protected $defaultViewObjectName = \Neos\Flow\Mvc\View\JsonView::class;
+    protected $defaultViewObjectName = JsonView::class;
 
-    public function checkAction()
+    /**
+     * Resolves the live site node to make sure database and content repository are reachable.
+     * Any failure surfaces as an uncaught exception and therefore as HTTP 500.
+     */
+    public function checkAction(): void
     {
-        $context = $this->contextFactory->create();
-        $q = new FlowQuery([$context->getCurrentSiteNode()]);
-        $q->get();
-        $status = ['status' => 'OK'];
-        $this->view->assign('value', $status);
+        $site = $this->siteRepository->findDefault()
+            ?? throw new \RuntimeException('Health check failed: no site configured', 1761487200);
+        $this->siteNodeUtility->findSiteNodeBySite(
+            $site,
+            WorkspaceName::forLive(),
+            $site->getConfiguration()->defaultDimensionSpacePoint
+        );
+        $this->view->assign('value', ['status' => 'OK']);
     }
 
 }
